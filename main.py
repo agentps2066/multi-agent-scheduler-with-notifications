@@ -8,6 +8,7 @@ import streamlit.components.v1 as components
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 from groq import Groq
+from streamlit_mic_recorder import mic_recorder
 
 from graph import graph
 from tools import DB_PATH
@@ -426,17 +427,29 @@ with col_chat:
 
             i += 1
 
-    # Native Streamlit audio input + Groq Whisper STT
-    audio_bytes = st.audio_input("Record a voice message")
-    text_input = st.chat_input("Ask to book, check, or reschedule...")
+    # Clean UI row: chat input and mic button side-by-side
+    input_col, mic_col = st.columns([12, 1])
+    
+    with input_col:
+        text_input = st.chat_input("Ask to book, check, or reschedule...")
+        
+    with mic_col:
+        st.write("") # vertical alignment padding
+        audio = mic_recorder(
+            start_prompt="🎙️",
+            stop_prompt="⏹️",
+            just_once=True,
+            use_container_width=True,
+            key='mic'
+        )
     
     user_input = text_input
     
-    if audio_bytes and not text_input:
+    if audio and not text_input:
         try:
             client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
             transcription = client.audio.transcriptions.create(
-                file=("audio.wav", audio_bytes.getvalue()),
+                file=("audio.wav", audio['bytes']),
                 model="whisper-large-v3-turbo",
             )
             user_input = transcription.text
