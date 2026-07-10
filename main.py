@@ -212,8 +212,8 @@ def load_history():
         snap = graph.get_state(CONFIG)
         if snap and snap.values:
             return snap.values.get("messages", [])
-    except Exception:
-        pass
+    except Exception as e:
+        st.error(f"Error loading history: {e}")
     return []
 
 
@@ -267,6 +267,9 @@ def stream_graph_response(user_input: str):
                 ):
                     yield msg.content
     except Exception as e:
+        import traceback
+        err = f"CRASH LOG: {traceback.format_exc()}"
+        with open("crash.log", "w") as f: f.write(err)
         yield f"\n\n*Error: {e}*"
 
 
@@ -463,10 +466,10 @@ with col_chat:
 
         with chat_area:
             with st.chat_message("assistant"):
-                # Stream token-by-token using st.write_stream
-                st.write_stream(stream_graph_response(user_input))
+                full_response = st.write_stream(stream_graph_response(user_input))
 
-        st.rerun()
+        if "*Error:" not in full_response:
+            st.rerun()
 
 
 # ── Database column ───────────────────────────────────────────────────────────
