@@ -146,9 +146,12 @@ details summary {
 </style>
 """, unsafe_allow_html=True)
 
-THREAD_ID = "scheduler_main_thread_v1"
-CONFIG = {"configurable": {"thread_id": THREAD_ID}}
+import uuid
 
+if "thread_id" not in st.session_state:
+    st.session_state.thread_id = str(uuid.uuid4())
+
+CONFIG = {"configurable": {"thread_id": st.session_state.thread_id}}
 
 def fetch_busy_slots():
     conn = sqlite3.connect(DB_PATH)
@@ -170,31 +173,16 @@ def fetch_reservations():
 
 def clear_db():
     conn = sqlite3.connect(DB_PATH)
-    conn.execute("DELETE FROM busy_slots")
-    conn.execute("DELETE FROM reservations")
-    conn.commit()
+    try:
+        conn.execute("DELETE FROM busy_slots")
+        conn.execute("DELETE FROM reservations")
+        conn.commit()
+    except Exception:
+        pass
     conn.close()
-
-    cp_path = os.path.join(os.path.dirname(__file__), "checkpointer.db")
-    if os.path.exists(cp_path):
-        c = sqlite3.connect(cp_path)
-        try:
-            c.execute("DELETE FROM checkpoints")
-            c.execute("DELETE FROM writes")
-            c.commit()
-        except Exception:
-            pass
-        c.close()
-
-    mem_path = os.path.join(os.path.dirname(__file__), "user_memory.db")
-    if os.path.exists(mem_path):
-        m = sqlite3.connect(mem_path)
-        try:
-            m.execute("DELETE FROM store")
-            m.commit()
-        except Exception:
-            pass
-        m.close()
+    
+    # Just generate a new thread ID to start a fresh conversation history!
+    st.session_state.thread_id = str(uuid.uuid4())
 
 
 def add_mock_busy(participant, start_iso, end_iso):
