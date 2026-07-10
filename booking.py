@@ -74,15 +74,20 @@ def _execute_tool(tool_call) -> ToolMessage:
 
     tool_fn = _TOOL_MAP.get(tool_name)
     if tool_fn is None:
-        result = f"Error: unknown tool '{tool_name}'"
+        result_str = f"Error: unknown tool '{tool_name}'"
     else:
         try:
-            result = tool_fn.invoke(tool_args)
+            raw_result = tool_fn.invoke(tool_args)
+            if isinstance(raw_result, list) and not raw_result:
+                result_str = "No slots are currently occupied. The date is completely free."
+            else:
+                import json
+                result_str = json.dumps(raw_result)
         except Exception as exc:
-            result = f"Tool error: {exc}"
+            result_str = f"Tool error: {exc}"
 
     return ToolMessage(
-        content=str(result),
+        content=result_str,
         tool_call_id=tool_call["id"],
         name=tool_name,
     )
