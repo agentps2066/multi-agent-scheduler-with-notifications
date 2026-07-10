@@ -83,7 +83,8 @@ Create a `.env` file in the root of the project and add your API keys and config
 
 ```env
 GROQ_API_KEY=your_groq_api_key_here
-WEBHOOK_URL=https://httpbin.org/post // put your actual webhook url here instead of the placeholder
+#put your actual webhook url here instead of the placeholder url porvided right now
+WEBHOOK_URL=https://httpbin.org/post
 ```
 
 *You can obtain a free Groq API key from the [Groq Console](https://console.groq.com).*
