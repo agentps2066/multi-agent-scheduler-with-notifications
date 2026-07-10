@@ -1,21 +1,27 @@
 # Multi-Agent Scheduling Assistant
 
-A calendar scheduling assistant built with LangGraph, SQLite, and Streamlit. Two LLM-powered agents coordinate to handle scheduling requests: one classifies intent, the other manages the actual booking workflow through a tool-calling loop.
+A robust, AI-powered calendar scheduling assistant built with **LangGraph**, **SQLite**, and **Streamlit**. 
+
+This system uses a multi-agent architecture where two distinct LLM-powered agents coordinate to handle your scheduling requests seamlessly. The system includes built-in state persistence, cross-session memory, voice interactions, and a resilient local database.
 
 ## Architecture
 
-```
+The workflow routes incoming user messages through a directed graph:
+
+```text
 User Input
     │
     ▼
 Triage Agent  (llama-4-scout, structured output)
     │
-    ├── general query → reply directly → END
+    ├── General Query → Replies directly → END
     │
-    └── booking intent → Booking Specialist
+    └── Booking Intent → Booking Specialist
                               │
                               ├── check_availability()
                               ├── reserve_slot()
+                              ├── reschedule_slot()
+                              ├── cancel_slot()
                               └── send_booking_notification()
                                           │
                                           ▼
@@ -24,82 +30,87 @@ Triage Agent  (llama-4-scout, structured output)
 
 ### Agents
 
-**Triage Agent** (`triage.py`)  
-Uses Pydantic structured output via `.with_structured_output()` — the model returns a typed `TriageResult` object with `intent: Literal['booking', 'general']`. No fragile string matching.
+**1. Triage Agent** (`triage.py`)  
+Acts as the frontline router. It leverages Pydantic structured output via `.with_structured_output()` to return a strictly typed `TriageResult` object. By categorizing intents as either `booking` or `general`, it avoids fragile string matching and ensures efficient routing.
 
-**Booking Specialist** (`booking.py`)  
-Runs a ReAct loop: the LLM reasons, calls tools, receives results, and continues until it produces a final text response. If date or time or email is missing, it asks the user before doing anything. Normalizes relative dates ("tomorrow", "next Friday") to `YYYY-MM-DD` before tool calls.
+**2. Booking Specialist** (`booking.py`)  
+Handles the complex business logic of scheduling. It runs a ReAct tool-calling loop where the LLM reasons about the user's request, calls necessary tools, and processes the results. It is explicitly instructed to never guess missing information (like exact times or emails) and will pause to ask the user. It also intelligently normalizes relative dates (e.g., "tomorrow", "next Friday") into exact `YYYY-MM-DD` formats before executing tools.
 
-### Memory layers
+## Memory & State Management
+
+The application features advanced state persistence, ensuring that conversations and user preferences survive across reboots and browser refreshes.
 
 | Layer | Implementation | Scope |
 |---|---|---|
-| Conversation history | `SqliteSaver` → `checkpointer.db` | Per thread |
-| User preferences | `SqliteStore` → `user_memory.db` | Cross-thread |
+| **Conversation History** | `SqliteSaver` → `checkpointer.db` | Per-thread |
+| **User Preferences** | `SqliteStore` → `user_memory.db` | Cross-thread |
+| **Business Logic** | Standard SQLite → `scheduler.db` | Global |
 
-The cross-session store remembers a user's email and preferred meeting duration. On their next session the booking specialist picks these up automatically and prefills them into the prompt.
+The cross-session store remembers a user's email and preferred meeting duration. On their next session, the booking specialist automatically retrieves this information and prefills it into the context prompt. 
 
-### Tools (`tools.py`)
+Additionally, the SQLite connections are equipped with **auto-recovery mechanisms**. If the local database files are ever corrupted (e.g., due to unexpected shutdowns or git conflicts on cloud deployments), the application detects the schema mismatch, cleanly wipes the corrupted files, and rebuilds the tables automatically.
 
-- `check_availability(date)` — returns all occupied slots for a given date from SQLite
-- `reserve_slot(date, time, email, duration_minutes)` — overlap-safe write to SQLite
-- `send_booking_notification(email, details)` — POSTs a JSON payload to the configured webhook URL
+## Tool Arsenal (`tools.py`)
 
-### Persistence
+The Booking Specialist is equipped with a suite of strict Python tools to interact with the database safely:
 
-Two SQLite files are created automatically on first run:
-- `scheduler.db` — busy slots and confirmed reservations
-- `checkpointer.db` — LangGraph conversation state (per thread)
-- `user_memory.db` — cross-session user preferences (email, duration)
+*   `check_availability(date)` — Returns all occupied slots for a given date.
+*   `reserve_slot(date, time, email, duration)` — Performs an overlap-safe write to reserve a slot.
+*   `cancel_slot(date, time, email)` — Safely removes an existing booking.
+*   `reschedule_slot(email, old_date, old_time, new_date, new_time)` — A transactional tool that cancels the old slot and reserves the new one, reverting automatically if the new slot is unavailable.
+*   `send_booking_notification(email, details)` — POSTs a JSON payload to a configured webhook URL for external integrations.
 
-## Stack
+## Tech Stack
 
-- **LangGraph** — state machine, conditional routing, memory stores
-- **Groq** — inference (llama-4-scout, 131K context, 30K TPM free tier)
-- **Streamlit** — UI with token streaming and voice input
-- **SQLite** — all persistence, no external services
+*   **LangGraph**: Core state machine, conditional routing, and memory stores.
+*   **Groq API**: Blazing fast LLM inference (powered by `llama-4-scout` and `whisper-large-v3-turbo`).
+*   **Streamlit**: Reactive frontend UI featuring real-time token streaming and embedded voice input.
+*   **SQLite**: Zero-dependency local persistence for both application data and agent memory.
 
-## Setup
+## Setup Instructions
 
-### 1. Install dependencies
+### 1. Install Dependencies
+
+Ensure you have Python 3.10+ installed, then install the required packages:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Configure environment
+### 2. Configure Environment Variables
 
-Create `.env` in the project root:
+Create a `.env` file in the root of the project and add your API keys and configuration:
 
 ```env
-GROQ_API_KEY=your_key_here
+GROQ_API_KEY=your_groq_api_key_here
 WEBHOOK_URL=https://httpbin.org/post
 ```
 
-Get a free Groq API key at [console.groq.com](https://console.groq.com).
+*You can obtain a free Groq API key from the [Groq Console](https://console.groq.com).*
 
-### 3. Run
+### 3. Run the Application
+
+Start the Streamlit server:
 
 ```bash
 streamlit run main.py
 ```
 
-Open `http://localhost:8501`.
+The application will be available at `http://localhost:8501`.
 
-## Features
+## Key Features
 
-**Token streaming** — responses appear word-by-word using `graph.stream()` and `st.write_stream()` instead of waiting for the full reply.
+*   **Sleek Organic UI**: Features a modern, human-centric design with dark mode styling, custom CSS components, and a side-by-side chat layout.
+*   **Voice Input**: Speak directly to the assistant! Uses `streamlit-mic-recorder` and Groq's Whisper API for near-instant speech-to-text translation.
+*   **Token Streaming**: Responses are streamed word-by-word natively using LangGraph's `graph.stream()`, providing a snappy user experience.
+*   **Conflict Negotiation**: If a requested slot is occupied, the agent automatically checks for alternatives and proposes them instead of failing abruptly.
+*   **iCal Export**: Confirmed bookings can be downloaded as `.ics` files directly from the UI, compatible with Google Calendar, Outlook, and Apple Calendar.
+*   **Live Database Monitor**: A real-time dashboard in the side column displays busy slots and confirmed reservations without disrupting the active chat session.
 
-**Voice input** — record audio directly in the browser using Streamlit's native `st.audio_input` widget. Transcriptions are powered by Groq's `whisper-large-v3-turbo` model for lightning-fast speech-to-text.
-**iCal export** — confirmed bookings can be downloaded as a `.ics` file compatible with Google Calendar, Outlook, and Apple Calendar.
+## Testing Webhooks
 
-**Conflict negotiation** — if a requested slot is occupied, the agent checks for alternatives and proposes them rather than failing.
-
-**Live database monitor** — busy slots and reservations update in the right column in real-time without disrupting the chat layout.
-
-## Testing webhooks
-
-To inspect notification payloads:
-1. Open [webhook.site](https://webhook.site) and copy your unique URL.
-2. Paste it into the **Webhook URL** field in the sidebar.
-3. Book a slot — the JSON payload will appear on Webhook.site instantly.
+If you'd like to inspect the JSON payloads dispatched by the agent upon booking:
+1. Navigate to [webhook.site](https://webhook.site) and copy your unique URL.
+2. Paste it into the **Webhook URL** field in the application's sidebar.
+3. Successfully book an appointment through the chat interface.
+4. Watch the JSON confirmation payload appear instantly on Webhook.site.
