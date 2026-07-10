@@ -120,4 +120,56 @@ def send_booking_notification(email: str, details: str) -> Dict[str, Any]:
     except Exception as e:
         return {"success": False, "status_code": 0, "message": str(e)}
 
-TOOLS = [check_availability, reserve_slot, send_booking_notification]
+@tool
+def cancel_slot(date: str, time: str, email: str) -> Dict[str, Any]:
+    """
+    Cancel an existing appointment slot for a participant.
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    
+    cur.execute(
+        "SELECT COUNT(*) FROM reservations WHERE date = ? AND time = ? AND email = ?",
+        (date, time, email)
+    )
+    if cur.fetchone()[0] == 0:
+        conn.close()
+        return {"success": False, "message": "Reservation not found."}
+        
+    cur.execute(
+        "DELETE FROM reservations WHERE date = ? AND time = ? AND email = ?",
+        (date, time, email)
+    )
+    
+    try:
+        start_dt = datetime.strptime(f"{date} {time}", "%Y-%m-%d %H:%M")
+        start_iso = start_dt.strftime("%Y-%m-%dT%H:%M")
+        cur.execute(
+            "DELETE FROM busy_slots WHERE participant = ? AND start_time = ?",
+            (email, start_iso)
+        )
+    except Exception:
+        pass
+        
+    conn.commit()
+    conn.close()
+    return {"success": True, "message": "Cancelled successfully."}
+
+@tool
+def reschedule_slot(email: str, old_date: str, old_time: str, new_date: str, new_time: str, duration_minutes: int = 60) -> Dict[str, Any]:
+    """
+    Reschedule an existing appointment to a new date and time.
+    """
+    cancel_res = cancel_slot.invoke({"date": old_date, "time": old_time, "email": email})
+    if not cancel_res["success"]:
+        return {"success": False, "message": f"Failed to cancel old slot: {cancel_res['message']}"}
+        
+    reserve_res = reserve_slot.invoke({"date": new_date, "time": new_time, "email": email, "duration_minutes": duration_minutes})
+    if not reserve_res["success"]:
+        # Rollback cancellation by re-reserving old slot
+        reserve_slot.invoke({"date": old_date, "time": old_time, "email": email, "duration_minutes": duration_minutes})
+        return {"success": False, "message": f"Failed to reserve new slot: {reserve_res['message']}. Original slot kept."}
+        
+    return {"success": True, "message": "Rescheduled successfully."}
+
+TOOLS = [check_availability, reserve_slot, send_booking_notification, cancel_slot, reschedule_slot]
