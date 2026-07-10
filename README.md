@@ -90,8 +90,7 @@ Open `http://localhost:8501`.
 
 **Token streaming** — responses appear word-by-word using `graph.stream()` and `st.write_stream()` instead of waiting for the full reply.
 
-**Voice input** — the "Hold to speak" button uses the browser's native Web Speech API (Chrome/Edge). No external transcription service, no API key.
-
+**Voice input** — record audio directly in the browser using Streamlit's native `st.audio_input` widget. Transcriptions are powered by Groq's `whisper-large-v3-turbo` model for lightning-fast speech-to-text.
 **iCal export** — confirmed bookings can be downloaded as a `.ics` file compatible with Google Calendar, Outlook, and Apple Calendar.
 
 **Conflict negotiation** — if a requested slot is occupied, the agent checks for alternatives and proposes them rather than failing.
