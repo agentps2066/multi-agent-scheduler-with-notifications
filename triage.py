@@ -34,9 +34,21 @@ Use intent "general" for greetings, questions about capabilities, or general con
 
 
 def triage_agent_node(state: AgentState) -> Dict[str, Any]:
+    # Only use the last Human message for triage to avoid Groq JSON mode history errors
+    # with previous tool calls or long context.
     messages = state.get("messages", [])
+    last_human = None
+    for m in reversed(messages):
+        if m.type == "human":
+            last_human = m
+            break
+
     system = SystemMessage(content=TRIAGE_SYSTEM_PROMPT)
-    result: TriageResult = structured_llm.invoke([system] + messages)
+    inputs = [system]
+    if last_human:
+        inputs.append(last_human)
+
+    result: TriageResult = structured_llm.invoke(inputs)
 
     if result.intent == "booking":
         return {"current_agent": "booking_specialist"}
