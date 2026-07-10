@@ -7,6 +7,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+from groq import Groq
 
 from graph import graph
 from tools import DB_PATH
@@ -425,12 +426,24 @@ with col_chat:
 
             i += 1
 
-    # Voice input sits between chat history and text input
-    voice_col, _ = st.columns([1, 3])
-    with voice_col:
-        voice_value = components.html(VOICE_COMPONENT, height=52)
+    # Native Streamlit audio input + Groq Whisper STT
+    audio_bytes = st.audio_input("Record a voice message")
+    text_input = st.chat_input("Ask to book, check, or reschedule...")
+    
+    user_input = text_input
+    
+    if audio_bytes and not text_input:
+        try:
+            client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+            transcription = client.audio.transcriptions.create(
+                file=("audio.wav", audio_bytes.getvalue()),
+                model="whisper-large-v3-turbo",
+            )
+            user_input = transcription.text
+        except Exception as e:
+            st.error(f"Voice recognition failed: {e}")
 
-    if user_input := st.chat_input("Ask to book, check, or reschedule..."):
+    if user_input:
         with chat_area:
             with st.chat_message("user"):
                 st.write(user_input)
